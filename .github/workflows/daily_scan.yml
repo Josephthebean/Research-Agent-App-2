@@ -1,0 +1,87 @@
+name: Daily Real Asset Research Scan
+
+on:
+  schedule:
+    - cron: "0 1 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Restore historical research state
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/research.db
+            public/history
+            reports/companies
+          key: research-history-${{ github.run_id }}
+          restore-keys: |
+            research-history-
+
+      - name: Run daily scan
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-4.1-mini' }}
+          YFINANCE_ENABLED: ${{ vars.YFINANCE_ENABLED || 'true' }}
+          SOURCE_DOWNLOAD_PDFS: ${{ vars.SOURCE_DOWNLOAD_PDFS || 'false' }}
+          SOURCE_REQUEST_DELAY_SECONDS: ${{ vars.SOURCE_REQUEST_DELAY_SECONDS || '2' }}
+        run: python scripts/run_daily_scan.py
+
+      - name: Build static portal
+        run: python scripts/build_site.py
+
+      - name: Upload research artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: research-outputs
+          path: |
+            data/research.db
+            outputs/latest_screen.csv
+            outputs/latest_screen.json
+            outputs/historical_scores.csv
+            outputs/historical_scores.json
+            reports/*.md
+            reports/companies/*.md
+            public/
+          if-no-files-found: ignore
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
