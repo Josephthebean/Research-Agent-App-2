@@ -1,71 +1,87 @@
 from __future__ import annotations
 
-import pandas as pd
+import json
+from pathlib import Path
+from typing import Any
+
+from src.database import execute_many, fetch_all, fetch_one
+from src.utils import money, neutralize_investment_language
 
 
-def _latest_result(ticker: str, screening_results: pd.DataFrame) -> dict:
-    if screening_results.empty:
-        return {}
-    matches = screening_results[screening_results["ticker"] == ticker]
-    if matches.empty:
-        return {}
-    return matches.iloc[0].to_dict()
+def _source_lines(sources: list[dict[str, Any]]) -> str:
+    if not sources:
+        return "- No saved sources yet; requires manual review."
+    return "\n".join(f"- [{source['title']}]({source['url']}) - {source['source_type']} (Tier {source['tier']})" for source in sources)
 
 
-def _company_row(ticker: str, watchlist: pd.DataFrame) -> dict:
-    matches = watchlist[watchlist["ticker"] == ticker]
-    if matches.empty:
-        return {"ticker": ticker, "company_name": ticker, "sector": "unknown", "jurisdiction": "unknown"}
-    return matches.iloc[0].to_dict()
+def screening_label(score: dict[str, Any]) -> str:
+    if score["manual_review"]:
+        return "requires manual review"
+    if score["total_score"] >= 70:
+        return "screening candidate"
+    return "worth further research"
 
 
-def _source_lines(ticker: str, sources: pd.DataFrame) -> list[str]:
-    if sources.empty:
-        return ["No saved sources yet. Add filings, technical reports, presentations, and news before relying on this memo."]
+def build_memo(database_path: str, scan_date: str, score: dict[str, Any]) -> str:
+    ticker = score["ticker"]
+    sources = fetch_all(database_path, "SELECT * FROM report_sources WHERE scan_date = ? AND ticker = ? ORDER BY tier, source_type", (scan_date, ticker))
+    extracted = fetch_all(database_path, "SELECT * FROM extracted_values WHERE scan_date = ? AND ticker = ? ORDER BY confidence DESC", (scan_date, ticker))
+    valuation = fetch_one(database_path, "SELECT * FROM valuations WHERE scan_date = ? AND ticker = ?", (scan_date, ticker)) or {}
+    explanations = json.loads(score.get("explanation_json") or "{}")
+    warnings = json.loads(score.get("warnings_json") or "[]") + json.loads(valuation.get("warnings_json") or "[]")
+    evidence = "| Metric | Value | Source | Page | Confidence |\n| --- | --- | --- | --- | --- |\n"
+    evidence += "\n".join(f"| {row['metric']} | {row.get('value') or 'n/a'} {row.get('unit') or ''} | {Path(row.get('source_file') or '').name or 'n/a'} | {row.get('page_number') or 'n/a'} | {row.get('confidence') or 0} |" for row in extracted[:12]) or "| n/a | Requires manual review | n/a | n/a | low |"
+    valuation_table = "| Metric | Value |\n| --- | --- |\n" + f"| Market cap | {money(valuation.get('market_cap'))} |\n| Enterprise value | {money(valuation.get('enterprise_value'))} |\n| P/NPV | {valuation.get('p_npv') or 'n/a'} |\n| EV/NPV | {valuation.get('ev_npv') or 'n/a'} |\n| AISC margin | {money(valuation.get('aisc_margin'))} |"
+    memo = f"""# {score['company']} ({ticker})
 
-    matches = sources[sources["ticker"] == ticker]
-    if matches.empty:
-        return ["No saved sources yet for this company."]
+## 1. Neutral Summary
+{score['company']} is a {score['commodity']} company on {score['exchange']} with a latest screening score of {score['total_score']}/100 and {score['confidence_level']} data confidence.
 
-    return [
-        f"- [{row['title']}]({row['url']}) ({row['source_type']}, {row.get('published_date', '')})"
-        for _, row in matches.iterrows()
-    ]
+## 2. Why It Appeared In The Screen
+The company is part of the configured real asset watchlist and currently ranks as a {screening_label(score)}.
 
+## 3. Analyst Sentiment
+Analyst sentiment field: {score.get('analyst_rating') or 'not available'}.
 
-def generate_memo(
-    *,
-    ticker: str,
-    watchlist: pd.DataFrame,
-    screening_results: pd.DataFrame,
-    sources: pd.DataFrame,
-    strategy: dict,
-) -> str:
-    company = _company_row(ticker, watchlist)
-    result = _latest_result(ticker, screening_results)
-    source_lines = _source_lines(ticker, sources)
+## 4. Main Assets / Projects
+Requires manual review of official reports and presentations.
 
-    score = result.get("score", "Not screened")
-    recommendation = result.get("recommendation", "Run screen before forming a recommendation.")
-    rationale = result.get("rationale", "No scoring rationale available yet.")
-    risk_focus = ", ".join(strategy.get("memo", {}).get("risk_focus", []))
+## 5. Production And Cost Profile
+{evidence}
 
-    return f"""
-## {company['company_name']} ({ticker})
+## 6. Valuation Table
+{valuation_table}
 
-**Sector:** {company.get('sector', 'unknown')}  
-**Jurisdiction:** {company.get('jurisdiction', 'unknown')}  
-**Research score:** {score}  
-**Recommendation:** {recommendation}
+## 7. P/NPV And EV/NPV
+P/NPV and EV/NPV are only shown when NPV is available from extracted or manual inputs. No NPV is invented.
 
-### Investment View
-{rationale}
+## 8. Key Catalysts
+{explanations.get('catalyst_score', {}).get('explanation', 'Catalysts require manual review.')}
 
-This recommendation is for research and portfolio decision support only. The system does not connect to brokerages, place orders, or execute automatic buy/sell decisions.
+## 9. Key Risks
+{chr(10).join(f'- {warning}' for warning in dict.fromkeys(warnings)) if warnings else '- No major pipeline warning recorded.'}
 
-### Key Risks To Verify
-{risk_focus or "Commodity price sensitivity, reserve quality, permitting, financing, cost inflation, management execution."}
+## 10. Missing Data / Manual Review
+{'Requires manual review due to missing or low-confidence data.' if score.get('manual_review') else 'No manual review flag from the current scan.'}
 
-### Sources
-{chr(10).join(source_lines)}
+## 11. Sources
+{_source_lines(sources)}
 """
+    return neutralize_investment_language(memo)
+
+
+def generate_memos(database_path: str, scan_date: str, scores: list[dict[str, Any]]) -> list[dict[str, str]]:
+    Path("reports/companies").mkdir(parents=True, exist_ok=True)
+    rows = []
+    for score in scores:
+        memo = build_memo(database_path, scan_date, score)
+        path = Path("reports/companies") / f"{score['ticker']}.md"
+        path.write_text(memo, encoding="utf-8")
+        rows.append({"scan_date": scan_date, "ticker": score["ticker"], "memo_markdown": memo, "memo_path": str(path)})
+    Path("reports/latest_summary.md").write_text("# Latest Real Asset Research Summary\n\n" + "\n".join(f"- {score['ticker']}: {score['total_score']}/100, {score['confidence_level']} confidence" for score in scores), encoding="utf-8")
+    execute_many(database_path, """
+        INSERT INTO memos (scan_date, ticker, memo_markdown, memo_path)
+        VALUES (:scan_date, :ticker, :memo_markdown, :memo_path)
+        ON CONFLICT(scan_date, ticker) DO UPDATE SET memo_markdown=excluded.memo_markdown, memo_path=excluded.memo_path
+    """, rows)
+    return rows
