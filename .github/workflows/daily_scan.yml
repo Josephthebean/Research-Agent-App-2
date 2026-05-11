@@ -50,7 +50,14 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-4.1-mini' }}
+          FACTSET_API_KEY: ${{ secrets.FACTSET_API_KEY }}
+          FACTSET_USERNAME: ${{ secrets.FACTSET_USERNAME }}
+          FACTSET_PASSWORD: ${{ secrets.FACTSET_PASSWORD }}
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          FINANCIAL_MODELING_PREP_API_KEY: ${{ secrets.FINANCIAL_MODELING_PREP_API_KEY }}
+          ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
           YFINANCE_ENABLED: ${{ vars.YFINANCE_ENABLED || 'true' }}
+          GOOGLE_FINANCE_EXPERIMENTAL: ${{ vars.GOOGLE_FINANCE_EXPERIMENTAL || 'false' }}
           SOURCE_DISCOVER_PDF_LINKS: ${{ vars.SOURCE_DISCOVER_PDF_LINKS || 'true' }}
           SOURCE_DOWNLOAD_PDFS: ${{ vars.SOURCE_DOWNLOAD_PDFS || 'false' }}
           SOURCE_REQUEST_DELAY_SECONDS: ${{ vars.SOURCE_REQUEST_DELAY_SECONDS || '2' }}
