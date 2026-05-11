@@ -1,5 +1,8 @@
-ticker,company_name,sector,exchange,jurisdiction
-FCX,Freeport-McMoRan,copper,NYSE,United States
-NEM,Newmont,gold,NYSE,United States
-WPM,Wheaton Precious Metals,royalty,NYSE,Canada
-CCJ,Cameco,uranium,NYSE,Canada
+ticker,company,commodity,exchange,jurisdiction,official_url
+AEM,Agnico Eagle Mines,gold,NYSE,Canada,https://www.agnicoeagle.com/
+NEM,Newmont,gold,NYSE,United States,https://www.newmont.com/
+GOLD,Barrick Gold,gold,NYSE,Canada,https://www.barrick.com/
+FNV,Franco-Nevada,gold royalty,NYSE,Canada,https://www.franco-nevada.com/
+WPM,Wheaton Precious Metals,streaming,NYSE,Canada,https://www.wheatonpm.com/
+FCX,Freeport-McMoRan,copper,NYSE,United States,https://www.fcx.com/
+CCJ,Cameco,uranium,NYSE,Canada,https://www.cameco.com/
