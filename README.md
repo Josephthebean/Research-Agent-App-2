@@ -94,6 +94,20 @@ It performs:
 5. Upload research artifacts
 6. Publish `public/` to GitHub Pages
 
+You can also run it manually from the GitHub Actions tab because the workflow includes `workflow_dispatch`.
+
+After GitHub Pages is enabled, the portal URL should be:
+
+```text
+https://<github-username>.github.io/<repo-name>/
+```
+
+For this repository, that is expected to be:
+
+```text
+https://Josephthebean.github.io/Research-Agent-App-2/
+```
+
 In your repository settings:
 
 1. Go to Settings -> Pages
