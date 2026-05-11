@@ -62,7 +62,14 @@ python scripts/build_site.py
 Use `.env` locally and GitHub Actions secrets/variables in the cloud. Never commit real API keys.
 
 ```text
+FACTSET_API_KEY=
+FACTSET_USERNAME=
+FACTSET_PASSWORD=
+FMP_API_KEY=
+FINANCIAL_MODELING_PREP_API_KEY=
+ALPHA_VANTAGE_API_KEY=
 YFINANCE_ENABLED=true
+GOOGLE_FINANCE_EXPERIMENTAL=false
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4.1-mini
 SOURCE_REQUEST_DELAY_SECONDS=2
@@ -82,6 +89,20 @@ NEWS_REQUEST_DELAY_SECONDS=1
 ```
 
 If `OPENAI_API_KEY` is missing, extraction falls back to conservative heuristic extraction and marks values for manual review.
+
+## Market Data Providers
+
+Market and fundamental data goes through `src/market_data.py` so the app is not locked to one source. Provider priority is:
+
+1. FactSet, when credentials are available
+2. Financial Modeling Prep, when `FMP_API_KEY` or `FINANCIAL_MODELING_PREP_API_KEY` is available
+3. Alpha Vantage, when `ALPHA_VANTAGE_API_KEY` is available
+4. Yahoo/yfinance fallback for basic market data and charts
+5. Manual/offline mode with `n/a` values and manual-review warnings
+
+Google Finance scraping is not used as the default provider. If enabled later, it should remain experimental/manual only and should not be treated as production market data.
+
+Each market data row stores field-level source metadata where available, such as `market_cap_source`, `market_cap_last_updated`, `enterprise_value_source`, and `enterprise_value_last_updated`. Missing fields are stored as null and rendered as `n/a` in the portal.
 
 ## Local Setup
 
