@@ -1,12 +1,11 @@
 scoring:
   category_weights:
-    valuation: 0.35
-    balance_sheet: 0.20
-    asset_quality: 0.25
-    jurisdiction: 0.20
-  valuation:
-    ev_to_ebitda: 0.55
-    price_to_nav: 0.45
+    valuation_score: 30
+    asset_quality_score: 25
+    balance_sheet_score: 15
+    catalyst_score: 15
+    analyst_sentiment_score: 15
+    risk_penalty_max: -20
 
 jurisdictions:
   preferred:
@@ -20,26 +19,6 @@ jurisdictions:
     - Mexico
     - Peru
 
-sector_assumptions:
-  gold:
-    primary_commodity: gold
-  copper:
-    primary_commodity: copper
-  uranium:
-    primary_commodity: uranium
-  royalty:
-    primary_commodity: diversified royalties
-
-source_templates:
-  - source_type: annual_report
-    description: "Latest annual report for {company_name} ({ticker})"
-  - source_type: filing
-    description: "Recent securities filings for {company_name} ({ticker})"
-  - source_type: technical_report
-    description: "Reserve, resource, or technical report for {company_name} ({ticker})"
-  - source_type: presentation
-    description: "Latest investor presentation for {company_name} ({ticker})"
-
 memo:
   risk_focus:
     - commodity price sensitivity
@@ -48,3 +27,24 @@ memo:
     - balance sheet and dilution risk
     - operating cost inflation
     - management execution
+
+source_policy:
+  request_delay_seconds: 2
+  download_pdfs_by_default: false
+  priority:
+    tier_1:
+      - annual reports
+      - quarterly reports
+      - NI 43-101 / JORC reports
+      - feasibility studies
+      - reserve/resource statements
+      - investor presentations
+      - company press releases
+    tier_2:
+      - exchange filings
+      - regulator filings
+      - analyst summaries if accessible
+    tier_3:
+      - financial news
+      - blogs
+      - forum posts
