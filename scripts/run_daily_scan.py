@@ -31,16 +31,31 @@ def main() -> None:
         for table in ["market_data", "report_sources", "extracted_values", "valuations", "scores", "memos"]:
             conn.execute(f"DELETE FROM {table} WHERE scan_date = ?", (scan_date,))
     notes: list[str] = []
-    for label, fn in [
-        ("Market scan", lambda: run_market_scan(str(DB_PATH), scan_date, watchlist)),
-        ("Source collection", lambda: collect_sources(str(DB_PATH), scan_date, watchlist)),
-        ("Document extraction", lambda: extract_documents(str(DB_PATH), scan_date)),
-        ("Valuation/scoring/memo", lambda: generate_memos(str(DB_PATH), scan_date, score_companies(str(DB_PATH), scan_date, watchlist)) if value_companies(str(DB_PATH), scan_date) is not None else None),
-    ]:
-        try:
-            fn()
-        except Exception as exc:
-            notes.append(f"{label} failed gracefully: {exc}")
+    try:
+        run_market_scan(str(DB_PATH), scan_date, watchlist)
+    except Exception as exc:
+        notes.append(f"Market scan failed gracefully: {exc}")
+    try:
+        collect_sources(str(DB_PATH), scan_date, watchlist)
+    except Exception as exc:
+        notes.append(f"Source collection failed gracefully: {exc}")
+    try:
+        extract_documents(str(DB_PATH), scan_date)
+    except Exception as exc:
+        notes.append(f"Document extraction failed gracefully: {exc}")
+    try:
+        value_companies(str(DB_PATH), scan_date)
+        scores = score_companies(str(DB_PATH), scan_date, watchlist)
+        generate_memos(str(DB_PATH), scan_date, scores)
+    except Exception as exc:
+        notes.append(f"Valuation/scoring/memo stage failed gracefully: {exc}")
+    with connect(DB_PATH) as conn:
+        score_count = conn.execute("SELECT COUNT(*) FROM scores WHERE scan_date = ?", (scan_date,)).fetchone()[0]
+    if score_count == 0:
+        notes.append("No scores were generated; preserving the previous successful portal.")
+        with connect(DB_PATH) as conn:
+            conn.execute("UPDATE scan_runs SET completed_at = ?, status = 'failed', notes = ? WHERE scan_date = ?", (utc_now_iso(), "\n".join(notes), scan_date))
+        raise SystemExit("\n".join(notes))
     with connect(DB_PATH) as conn:
         conn.execute("UPDATE scan_runs SET completed_at = ?, status = 'completed', notes = ? WHERE scan_date = ?", (utc_now_iso(), "\n".join(notes), scan_date))
     print(f"Daily scan completed for {scan_date}")
