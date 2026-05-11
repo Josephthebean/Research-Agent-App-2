@@ -69,6 +69,7 @@ jobs:
             outputs/latest_screen.json
             outputs/historical_scores.csv
             outputs/historical_scores.json
+            public/data/metadata.json
             reports/*.md
             reports/companies/*.md
             public/
