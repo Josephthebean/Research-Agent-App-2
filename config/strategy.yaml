@@ -1,0 +1,50 @@
+scoring:
+  category_weights:
+    valuation: 0.35
+    balance_sheet: 0.20
+    asset_quality: 0.25
+    jurisdiction: 0.20
+  valuation:
+    ev_to_ebitda: 0.55
+    price_to_nav: 0.45
+
+jurisdictions:
+  preferred:
+    - Canada
+    - United States
+    - Australia
+    - Chile
+  watch:
+    - Argentina
+    - South Africa
+    - Mexico
+    - Peru
+
+sector_assumptions:
+  gold:
+    primary_commodity: gold
+  copper:
+    primary_commodity: copper
+  uranium:
+    primary_commodity: uranium
+  royalty:
+    primary_commodity: diversified royalties
+
+source_templates:
+  - source_type: annual_report
+    description: "Latest annual report for {company_name} ({ticker})"
+  - source_type: filing
+    description: "Recent securities filings for {company_name} ({ticker})"
+  - source_type: technical_report
+    description: "Reserve, resource, or technical report for {company_name} ({ticker})"
+  - source_type: presentation
+    description: "Latest investor presentation for {company_name} ({ticker})"
+
+memo:
+  risk_focus:
+    - commodity price sensitivity
+    - reserve and resource quality
+    - permitting and political risk
+    - balance sheet and dilution risk
+    - operating cost inflation
+    - management execution
