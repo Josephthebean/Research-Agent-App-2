@@ -160,7 +160,8 @@ def _added_today(database_path: str, scan_date: str) -> int:
 
 def discover_companies(database_path: str, scan_date: str | None = None) -> list[dict[str, Any]]:
     scan_date = scan_date or today_string()
-    candidates = _rows_from_etfs() + _rows_from_watchlist() + _rows_from_fallback() + _rows_from_config()
+    seed_rows = [_normalize(row, scan_date) for row in _rows_from_watchlist()]
+    candidates = _rows_from_etfs() + _rows_from_fallback() + _rows_from_config()
     deduped: dict[tuple[str, str], dict[str, Any]] = {}
     for row in (_normalize(row, scan_date) for row in candidates):
         if not row["ticker"]:
@@ -170,12 +171,13 @@ def discover_companies(database_path: str, scan_date: str | None = None) -> list
             deduped[key] = row
 
     existing = _existing_keys(database_path)
+    seed_keys = {(row["ticker"], row["exchange"]) for row in seed_rows}
     per_run = max(1, _env_int("DISCOVERY_NEW_COMPANIES_PER_RUN", 7))
     daily_limit = max(per_run, _env_int("DISCOVERY_DAILY_NEW_COMPANY_LIMIT", 28))
     remaining = max(0, daily_limit - _added_today(database_path, scan_date))
-    new_rows = [row for key, row in deduped.items() if key not in existing][: min(per_run, remaining)]
+    new_rows = [row for key, row in deduped.items() if key not in existing and key not in seed_keys][: min(per_run, remaining)]
     existing_rows = [row for key, row in deduped.items() if key in existing]
-    rows = existing_rows + new_rows
+    rows = seed_rows + existing_rows + new_rows
     upsert_companies(database_path, rows)
 
     execute_many(database_path, """
@@ -185,5 +187,5 @@ def discover_companies(database_path: str, scan_date: str | None = None) -> list
     execute_many(database_path, """
         INSERT INTO discovery_run_log (scan_date, run_started_at, requested_per_run, daily_limit, added_count, candidate_count, notes)
         VALUES (:scan_date, :run_started_at, :requested_per_run, :daily_limit, :added_count, :candidate_count, :notes)
-    """, [{"scan_date": scan_date, "run_started_at": utc_now_iso(), "requested_per_run": per_run, "daily_limit": daily_limit, "added_count": len(new_rows), "candidate_count": len(deduped), "notes": "Existing companies refreshed; new additions capped per run and per day."}])
+    """, [{"scan_date": scan_date, "run_started_at": utc_now_iso(), "requested_per_run": per_run, "daily_limit": daily_limit, "added_count": len(new_rows), "candidate_count": len(deduped), "notes": "Seed companies loaded separately; new additions capped per run and per day."}])
     return rows
