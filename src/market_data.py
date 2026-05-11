@@ -286,7 +286,14 @@ def fetch_price_history(company: dict[str, Any], scan_date: str) -> dict[str, An
 
         history = yf.Ticker(company["ticker"]).history(period="1y", auto_adjust=False)
         points = [
-            {"date": str(index.date()), "close": _safe_float(row.get("Close"))}
+            {
+                "date": str(index.date()),
+                "open": _safe_float(row.get("Open")),
+                "high": _safe_float(row.get("High")),
+                "low": _safe_float(row.get("Low")),
+                "close": _safe_float(row.get("Close")),
+                "volume": _safe_float(row.get("Volume")),
+            }
             for index, row in history.iterrows()
             if _safe_float(row.get("Close")) is not None
         ]
