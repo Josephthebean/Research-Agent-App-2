@@ -1,71 +1,61 @@
 # Real Asset Research Agent
 
-A Python research assistant for real asset and mining equities. It scans a watchlist, collects source metadata, extracts mining valuation inputs where documents are available, calculates transparent valuation and scoring metrics, generates neutral research memos, and builds a static daily research portal for GitHub Pages.
+A Python research assistant for real asset and mining equities. It discovers companies, stores a growing company database, collects official document metadata, extracts cited operating and valuation metrics from PDFs when available, calculates transparent valuation metrics, generates evidence-backed research opinions, and publishes a static daily portal with GitHub Pages.
 
-The project is for research workflow support only. It does not include brokerage trading, automatic order routing, or automatic buy/sell execution.
+This is a research workflow tool only. It does not include brokerage trading, automatic order routing, or automatic buy/sell execution. Outputs are non-personalized research opinions, not personalized financial advice.
 
-## What v1 Does
+## What The Pipeline Does
 
-- Reads `data/watchlist.csv`
-- Fetches basic market data where available
-- Stores scan snapshots in SQLite at `data/research.db`
-- Collects official source metadata with conservative rate limiting
-- Downloads PDFs only when explicitly enabled
-- Extracts PDF text page by page and marks uncertain values for manual review
-- Calculates valuation metrics only when required inputs exist
-- Scores companies with a transparent 100-point model
-- Generates markdown research memos with citations
-- Builds a static portal in `public/`
-- Publishes `public/` to GitHub Pages from GitHub Actions
+1. Loads seed companies from `data/watchlist.csv`.
+2. Discovers additional real-asset companies from live ETF holdings, optional remote CSV/company-list feeds, configured API-style inputs, and a curated fallback universe.
+3. Adds companies to SQLite without duplicating existing tickers on the same exchange.
+4. Fetches basic market data where available.
+5. Collects official company and regulator document URLs with conservative rate limiting.
+6. Downloads PDFs only when enabled and allowed.
+7. Reads PDFs page by page, preserves page numbers, and extracts metrics with citations.
+8. Calculates valuation metrics only when inputs exist. NPV is never invented.
+9. Produces a research classification and confidence level.
+10. Builds a static portal into `public/` and deploys it to GitHub Pages.
 
-## Setup Locally
+## Company Discovery
 
-```bash
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-copy .env.example .env
-```
+Manual seed companies remain in `data/watchlist.csv`, but the scan is not limited to those rows. Every manual or scheduled workflow run executes dynamic discovery first. The discovery module pulls holdings from real-asset ETF universes when network access is available, enriches symbols with company profile data, and appends new companies to SQLite without deleting older history.
 
-Run the daily scan manually:
+Default live discovery sources cover:
 
-```bash
-python scripts/run_daily_scan.py
-```
+- gold miners
+- copper miners
+- uranium companies
+- royalty/streaming companies
+- oil and gas producers
+- battery metals and critical minerals companies
 
-Build the static portal:
+The built-in ETF discovery set includes funds such as `GDX`, `GDXJ`, `RING`, `COPX`, `PICK`, `URA`, `URNM`, `LIT`, `REMX`, `XLE`, and `XOP`. Those holdings change over time, so future workflow runs can add companies that were not in the original seed watchlist.
 
-```bash
-python scripts/build_site.py
-```
+Discovery stores ticker, company name, exchange, country, sector, website, investor relations URL, source, first seen date, last seen date, active status, confidence, and manual review state. By default, each workflow execution can add up to 7 new companies, with a daily cap of 28 newly added companies to keep the research workload controlled.
 
-Run the Streamlit dashboard:
+You can add extra discovery sources without editing code:
 
-```bash
-streamlit run app.py
-```
+- `DISCOVERY_REMOTE_CSV_URLS`: comma-separated public CSV URLs with ticker/name/company columns.
+- `DISCOVERY_EXTRA_COMPANIES_JSON`: JSON list of company objects.
 
-Open the generated portal from `public/index.html`.
+If a live source is unavailable, the run logs the issue and continues using existing companies plus the curated fallback universe.
 
-## Watchlist
+## Add Seed Companies
 
-Edit `data/watchlist.csv` to add companies.
-
-Required columns:
+Edit `data/watchlist.csv` only for companies you want to force into the universe. Automatic discovery still runs even if you never edit the file.
 
 ```csv
 ticker,company,commodity,exchange,jurisdiction,official_url
+AEM,Agnico Eagle Mines,gold,NYSE,Canada,https://www.agnicoeagle.com/
 ```
 
-Starter universe:
+Then run:
 
-- AEM, Agnico Eagle Mines, gold, NYSE
-- NEM, Newmont, gold, NYSE
-- GOLD, Barrick Gold, gold, NYSE
-- FNV, Franco-Nevada, gold royalty, NYSE
-- WPM, Wheaton Precious Metals, streaming, NYSE
-- FCX, Freeport-McMoRan, copper, NYSE
-- CCJ, Cameco, uranium, NYSE
+```bash
+python scripts/run_daily_scan.py
+python scripts/build_site.py
+```
 
 ## Environment Variables
 
@@ -76,78 +66,114 @@ YFINANCE_ENABLED=true
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4.1-mini
 SOURCE_REQUEST_DELAY_SECONDS=2
+SOURCE_DISCOVER_PDF_LINKS=true
 SOURCE_DOWNLOAD_PDFS=false
+DISCOVERY_ENABLE_LIVE_SOURCES=true
+DISCOVERY_ENRICH_COMPANY_PROFILES=true
+DISCOVERY_USE_CURATED_FALLBACK=true
+DISCOVERY_MAX_COMPANIES_PER_RUN=80
+DISCOVERY_NEW_COMPANIES_PER_RUN=7
+DISCOVERY_DAILY_NEW_COMPANY_LIMIT=28
+DISCOVERY_REMOTE_CSV_URLS=
+DISCOVERY_EXTRA_COMPANIES_JSON=
+NEWS_DISCOVERY_ENABLED=true
+NEWS_ITEMS_PER_COMPANY=5
+NEWS_REQUEST_DELAY_SECONDS=1
 ```
 
-If `OPENAI_API_KEY` is missing, document extraction falls back to conservative heuristic extraction and marks values for manual review.
+If `OPENAI_API_KEY` is missing, extraction falls back to conservative heuristic extraction and marks values for manual review.
 
-## GitHub Pages
+## Local Setup
 
-The workflow `.github/workflows/daily_scan.yml` runs every weekday at 1 AM UTC, which is 9 AM Singapore time.
-
-It performs:
-
-1. Install dependencies
-2. Restore historical SQLite and memo/site state from cache
-3. Run `python scripts/run_daily_scan.py`
-4. Run `python scripts/build_site.py`
-5. Upload research artifacts
-6. Publish `public/` to GitHub Pages
-
-You can also run it manually from the GitHub Actions tab because the workflow includes `workflow_dispatch`.
-
-After GitHub Pages is enabled, the portal URL should be:
-
-```text
-https://<github-username>.github.io/<repo-name>/
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+copy .env.example .env
 ```
 
-For this repository, that is expected to be:
+Run the full pipeline:
+
+```bash
+python scripts/run_daily_scan.py
+python scripts/build_site.py
+```
+
+Run verification:
+
+```bash
+python scripts/verify_pipeline.py
+```
+
+Run Streamlit:
+
+```bash
+streamlit run app.py
+```
+
+## GitHub Actions And Pages
+
+The workflow `.github/workflows/daily_scan.yml` runs every weekday at 1 AM UTC, which is 9 AM Singapore time:
+
+```yaml
+0 1 * * 1-5
+```
+
+It also includes `workflow_dispatch`, so you can run it manually from the GitHub Actions tab.
+
+For GitHub Pages:
+
+1. Go to Settings -> Pages.
+2. Set Source to GitHub Actions.
+3. Add secrets such as `OPENAI_API_KEY` if you want LLM extraction.
+4. Optional variables: `YFINANCE_ENABLED`, `SOURCE_DOWNLOAD_PDFS`, `SOURCE_REQUEST_DELAY_SECONDS`.
+
+Expected portal URL:
 
 ```text
 https://Josephthebean.github.io/Research-Agent-App-2/
 ```
 
-In your repository settings:
+## Portal Pages
 
-1. Go to Settings -> Pages
-2. Set source to GitHub Actions
-3. Add secrets such as `OPENAI_API_KEY` if you want LLM extraction
-4. Optionally add repository variables for `YFINANCE_ENABLED`, `SOURCE_DOWNLOAD_PDFS`, and `SOURCE_REQUEST_DELAY_SECONDS`
-
-## Portal
-
-Generated pages:
-
-- `public/index.html`: latest daily dashboard
+- `public/index.html`: latest dashboard
+- `public/discovered.html`: newly discovered companies
+- `public/company-database.html`: full company database
+- `public/manual-review.html`: manual review queue
+- `public/documents.html`: source document library
+- `public/confidence.html`: data confidence dashboard
 - `public/archive.html`: historical archive
 - `public/comparison.html`: score comparison
-- `public/companies/{ticker}.html`: company research pages
+- `public/companies/{ticker}.html`: company research pages with price charts and memo sections
 - `public/history/YYYY-MM-DD/index.html`: daily snapshots
 
-The portal uses static HTML, CSS, JavaScript, and local JSON files. It does not require a backend server.
+The portal is static HTML/CSS/JavaScript. It does not require a backend server.
+
+## Research Classifications
+
+The system uses neutral research language:
+
+- high-priority research candidate
+- watchlist candidate
+- requires manual review
+- insufficient evidence
+- avoid for now based on available evidence
+
+It must not use direct recommendation language such as "you should buy," "guaranteed return," "definitely invest," or "sell immediately."
 
 ## Scoring Model
 
 Total score is out of 100:
 
-- Valuation score: 30
-- Asset quality score: 25
-- Balance sheet score: 15
-- Catalyst score: 15
-- Analyst sentiment score: 15
-- Risk penalty: up to -20
+- valuation score: 30
+- asset quality score: 25
+- balance sheet score: 15
+- catalyst score: 15
+- analyst sentiment score: 15
+- risk penalty: up to -20
 
-Every score includes a plain-English explanation and a source label. Missing data reduces confidence and creates manual-review warnings instead of filling in invented values.
+Missing or low-confidence data reduces confidence and creates manual-review flags instead of filling in invented values.
 
-## Neutral Language Policy
+## Limitations
 
-Generated memos and portal language avoid direct investment advice wording. The project uses phrases such as:
-
-- screening candidate
-- worth further research
-- requires manual review
-- data confidence is low
-- valuation available from extracted source
-
-The app should not use direct recommendation language such as buy, sell, or you should invest.
+This v1 uses ETF holdings, optional public CSV/company feeds, configured inputs, news inputs, and a curated fallback universe. It does not yet crawl every exchange listing worldwide. PDF downloading is disabled by default, and some company websites block automated retrieval. Source quality, stale filings, conflicting extracted values, and missing NPV inputs require human review before any real-world use.
