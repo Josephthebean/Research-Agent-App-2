@@ -34,6 +34,23 @@ SOURCE_PRIORITY = {
 }
 
 
+WPM_OFFICIAL_SOURCES = [
+    {"source_type": "annual_report", "title": "Wheaton Precious Metals annual reports and financial reports", "url": "https://www.wheatonpm.com/investors/financial-reports/default.aspx", "publication_date": ""},
+    {"source_type": "annual_information_form", "title": "Wheaton Precious Metals annual information forms and regulatory filings", "url": "https://www.wheatonpm.com/investors/financial-reports/default.aspx", "publication_date": ""},
+    {"source_type": "quarterly_report", "title": "Wheaton Precious Metals quarterly financial reports", "url": "https://www.wheatonpm.com/investors/financial-reports/default.aspx", "publication_date": ""},
+    {"source_type": "investor_presentation", "title": "Wheaton Precious Metals investor presentations", "url": "https://www.wheatonpm.com/investors/presentations/default.aspx", "publication_date": ""},
+    {"source_type": "press_release", "title": "Wheaton Precious Metals announces record 2024 revenue, adjusted net earnings and operating cash flow", "url": "https://www.wheatonpm.com/news/news-details/2025/Wheaton-Precious-Metals-Announces-Record-Revenue-Adjusted-Net-Earnings-and-Operating-Cash-Flow-for-2024/default.aspx", "publication_date": "2025"},
+    {"source_type": "press_release", "title": "Wheaton Precious Metals official news releases", "url": "https://www.wheatonpm.com/news/default.aspx", "publication_date": ""},
+]
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except ValueError:
+        return default
+
+
 def can_fetch(url: str, user_agent: str = "real-asset-research-agent") -> bool:
     parsed = urllib.parse.urlparse(url)
     robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
@@ -46,22 +63,44 @@ def can_fetch(url: str, user_agent: str = "real-asset-research-agent") -> bool:
         return True
 
 
+def _normalize_company_url(url: str) -> str:
+    if not url:
+        return ""
+    parsed = urllib.parse.urlparse(url)
+    if not parsed.scheme or not parsed.netloc:
+        return url.rstrip("/")
+    parts = [part for part in parsed.path.split("/") if part and not part.lower().endswith((".aspx", ".html", ".htm"))]
+    if parts and parts[-1].lower() in {"default"}:
+        parts = parts[:-1]
+    return urllib.parse.urlunparse((parsed.scheme, parsed.netloc, "/".join([""] + parts).rstrip("/"), "", "", "")).rstrip("/")
+
+
+def _join_company_url(base: str, path: str) -> str:
+    if not base:
+        return ""
+    if base.rstrip("/").lower().endswith(f"/{path.lower()}"):
+        return base.rstrip("/")
+    return f"{base.rstrip('/')}/{path.strip('/')}"
+
+
 def _source_candidates(company: dict[str, Any]) -> list[dict[str, Any]]:
-    base = (company.get("investor_relations_url") or company.get("official_url") or "").rstrip("/")
-    website = company.get("official_url", "").rstrip("/") or base
+    base = _normalize_company_url(company.get("investor_relations_url") or company.get("official_url") or "")
+    website = _normalize_company_url(company.get("official_url", "")) or base
     ticker = company["ticker"]
     name = company["company"]
+    if ticker.upper().replace(".TO", "") == "WPM" or "wheaton precious" in name.lower():
+        return WPM_OFFICIAL_SOURCES + [{"source_type": "regulator_filing", "title": f"{ticker} SEC company filings", "url": f"https://www.sec.gov/edgar/search/#/q={ticker}", "publication_date": ""}]
     if not base:
         return []
     return [
-        {"source_type": "annual_report", "title": f"{name} annual reports", "url": f"{base}/investors", "publication_date": ""},
-        {"source_type": "quarterly_report", "title": f"{name} quarterly reports", "url": f"{base}/investors", "publication_date": ""},
-        {"source_type": "investor_presentation", "title": f"{name} investor presentations", "url": f"{base}/investors", "publication_date": ""},
-        {"source_type": "press_release", "title": f"{name} company press releases", "url": f"{base}/news", "publication_date": ""},
+        {"source_type": "annual_report", "title": f"{name} annual reports", "url": _join_company_url(base, "investors"), "publication_date": ""},
+        {"source_type": "quarterly_report", "title": f"{name} quarterly reports", "url": _join_company_url(base, "investors"), "publication_date": ""},
+        {"source_type": "investor_presentation", "title": f"{name} investor presentations", "url": _join_company_url(base, "investors"), "publication_date": ""},
+        {"source_type": "press_release", "title": f"{name} company press releases", "url": _join_company_url(base, "news"), "publication_date": ""},
         {"source_type": "regulator_filing", "title": f"{ticker} SEC company filings", "url": f"https://www.sec.gov/edgar/search/#/q={ticker}", "publication_date": ""},
         {"source_type": "annual_information_form", "title": f"{name} annual information forms", "url": base, "publication_date": ""},
-        {"source_type": "technical_report", "title": f"{name} technical reports and reserve/resource statements", "url": f"{website}/operations", "publication_date": ""},
-        {"source_type": "sustainability_report", "title": f"{name} sustainability and permitting reports", "url": f"{website}/sustainability", "publication_date": ""},
+        {"source_type": "technical_report", "title": f"{name} technical reports and reserve/resource statements", "url": _join_company_url(website, "operations"), "publication_date": ""},
+        {"source_type": "sustainability_report", "title": f"{name} sustainability and permitting reports", "url": _join_company_url(website, "sustainability"), "publication_date": ""},
     ]
 
 
@@ -82,7 +121,8 @@ def _classify_pdf(title: str) -> str:
     return "company_announcement"
 
 
-def _discover_pdf_links(seed_url: str, delay: float, limit: int = 6) -> list[dict[str, Any]]:
+def _discover_pdf_links(seed_url: str, delay: float, limit: int | None = None) -> list[dict[str, Any]]:
+    limit = limit if limit is not None else _env_int("SOURCE_PDF_LINK_LIMIT_PER_SEED", 3)
     if os.getenv("SOURCE_DISCOVER_PDF_LINKS", "true").lower() != "true":
         return []
     if not seed_url or not can_fetch(seed_url):
@@ -134,16 +174,13 @@ def _download_pdf(url: str, target_dir: Path, ticker: str, delay: float) -> tupl
         return "", f"PDF download failed: {exc}"
 
 
-def collect_sources(
-    database_path: str,
-    scan_date: str,
-    watchlist: list[dict[str, Any]],
-    reports_dir: Path | str = "data/reports",
-) -> list[dict[str, Any]]:
+def collect_sources(database_path: str, scan_date: str, watchlist: list[dict[str, Any]], reports_dir: Path | str = "data/reports") -> list[dict[str, Any]]:
     delay = float(os.getenv("SOURCE_REQUEST_DELAY_SECONDS", "2"))
+    company_limit = max(1, _env_int("SOURCE_MAX_COMPANIES_PER_RUN", _env_int("PIPELINE_MAX_COMPANIES_PER_RUN", 35)))
+    seed_limit = max(1, _env_int("SOURCE_MAX_SEED_URLS_PER_COMPANY", 4))
     rows: list[dict[str, Any]] = []
-    for company in watchlist:
-        candidates = _source_candidates(company)
+    for company in watchlist[:company_limit]:
+        candidates = _source_candidates(company)[:seed_limit]
         for seed in list(candidates):
             candidates.extend(_discover_pdf_links(seed["url"], delay))
         seen_urls = set()
@@ -175,6 +212,9 @@ def collect_sources(
                     "warning": warning,
                     "company_id": _company_id(database_path, company["ticker"]),
                     "failure_reason": warning,
+                    "extraction_status": "downloaded" if local_path else "metadata_only",
+                    "pages_processed": 0,
+                    "extraction_error": "",
                 }
             )
 
@@ -197,11 +237,13 @@ def collect_sources(
         """
         INSERT OR IGNORE INTO source_documents (
             scan_date, company_id, ticker, title, source_type, url, publication_date,
-            retrieval_date, file_path, document_confidence, source_tier, failure_reason
+            retrieval_date, file_path, document_confidence, source_tier, failure_reason,
+            extraction_status, pages_processed, extraction_error
         )
         VALUES (
             :scan_date, :company_id, :ticker, :title, :source_type, :url, :publication_date,
-            :retrieved_date, :local_path, :confidence, :tier, :failure_reason
+            :retrieved_date, :local_path, :confidence, :tier, :failure_reason,
+            :extraction_status, :pages_processed, :extraction_error
         )
         """,
         rows,
