@@ -90,7 +90,7 @@ jobs:
           status=${PIPESTATUS[0]}
           echo "exit_code=${status}" >> "$GITHUB_OUTPUT"
           if [ "$status" -ne 0 ]; then
-            echo "::warning::Daily scan failed with exit code ${status}. Continuing so the previous successful portal can remain available. See the research-outputs artifact for outputs/logs/run_daily_scan.log."
+            echo "::warning::Daily scan failed with exit code ${status}. Continuing so a portal can still be published. See the research-outputs artifact for outputs/logs/run_daily_scan.log."
           fi
           exit 0
 
@@ -104,11 +104,34 @@ jobs:
           status=${PIPESTATUS[0]}
           echo "exit_code=${status}" >> "$GITHUB_OUTPUT"
           if [ "$status" -ne 0 ]; then
-            echo "::warning::Static portal generation failed with exit code ${status}. Attempting to deploy the last committed or restored public site. See the research-outputs artifact for outputs/logs/build_site.log."
+            echo "::warning::Static portal generation failed with exit code ${status}. Publishing a diagnostic fallback page. See the research-outputs artifact for outputs/logs/build_site.log."
           fi
           if [ ! -f public/index.html ]; then
-            echo "::error::public/index.html is missing, so there is no portal to deploy."
-            exit 1
+            cat > public/index.html <<'HTML'
+          <!doctype html>
+          <html lang="en">
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <title>Real Asset Research Portal - Build needs review</title>
+              <style>
+                body { margin: 0; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f7f9fc; color: #182433; }
+                main { max-width: 760px; margin: 10vh auto; padding: 32px; background: #fff; border: 1px solid #d9e2ef; border-radius: 12px; box-shadow: 0 20px 60px rgba(20, 45, 80, .08); }
+                h1 { margin: 0 0 12px; color: #003366; font-size: 28px; }
+                p { line-height: 1.6; }
+                code { background: #eef3f9; padding: 2px 6px; border-radius: 6px; }
+              </style>
+            </head>
+            <body>
+              <main>
+                <h1>Research portal build needs review</h1>
+                <p>The scheduled workflow ran, but the static portal could not be generated in this run.</p>
+                <p>Open the GitHub Actions artifact named <code>research-outputs</code> and review <code>outputs/logs/run_daily_scan.log</code> and <code>outputs/logs/build_site.log</code>.</p>
+                <p>No brokerage trading or automated investment action was performed.</p>
+              </main>
+            </body>
+          </html>
+          HTML
           fi
           exit 0
 
