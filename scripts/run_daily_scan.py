@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -37,6 +38,26 @@ def _limit_companies(companies: list[dict], seed_watchlist: list[dict], notes: l
     limited = (seed_rows + other_rows)[:limit]
     notes.append(f"Limited this run to {len(limited)} of {len(companies)} active companies. Increase PIPELINE_MAX_COMPANIES_PER_RUN to scan more.")
     return limited
+
+
+def _tag_company_types(watchlist: list[dict], notes: list[str]) -> None:
+    try:
+        with connect(DB_PATH) as conn:
+            for company in watchlist:
+                company_type = classify_company_type(company)
+                conn.execute(
+                    """
+                    UPDATE companies
+                    SET company_type = ?, business_model = ?
+                    WHERE ticker = ?
+                    """,
+                    (company_type, COMPANY_TYPE_DESCRIPTIONS.get(company_type, ""), company["ticker"]),
+                )
+    except sqlite3.OperationalError as exc:
+        if "no such column" in str(exc).lower():
+            notes.append(f"Company type tagging skipped because cached database schema is older: {exc}")
+            return
+        raise
 
 
 def main() -> None:
@@ -78,17 +99,7 @@ def main() -> None:
     if not watchlist:
         watchlist = seed_watchlist
     watchlist = _limit_companies(watchlist, seed_watchlist, notes)
-    with connect(DB_PATH) as conn:
-        for company in watchlist:
-            company_type = classify_company_type(company)
-            conn.execute(
-                """
-                UPDATE companies
-                SET company_type = ?, business_model = ?
-                WHERE ticker = ?
-                """,
-                (company_type, COMPANY_TYPE_DESCRIPTIONS.get(company_type, ""), company["ticker"]),
-            )
+    _tag_company_types(watchlist, notes)
 
     try:
         run_market_scan(str(DB_PATH), scan_date, watchlist)
