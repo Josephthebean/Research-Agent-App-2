@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -10,11 +11,32 @@ from src.discovery import discover_companies
 from src.extract import extract_documents
 from src.memo import generate_memos
 from src.news import collect_news
+from src.research_synthesizer import COMPANY_TYPE_DESCRIPTIONS, classify_company_type
 from src.scanner import run_market_scan
 from src.scoring import score_companies
 from src.sources import collect_sources
 from src.utils import ensure_directories, load_env_file, read_watchlist, today_string, utc_now_iso
 from src.valuation import value_companies
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _limit_companies(companies: list[dict], seed_watchlist: list[dict], notes: list[str]) -> list[dict]:
+    limit = max(1, _env_int("PIPELINE_MAX_COMPANIES_PER_RUN", 35))
+    if len(companies) <= limit:
+        return companies
+
+    seed_tickers = {row["ticker"] for row in seed_watchlist}
+    seed_rows = [row for row in companies if row["ticker"] in seed_tickers]
+    other_rows = [row for row in companies if row["ticker"] not in seed_tickers]
+    limited = (seed_rows + other_rows)[:limit]
+    notes.append(f"Limited this run to {len(limited)} of {len(companies)} active companies. Increase PIPELINE_MAX_COMPANIES_PER_RUN to scan more.")
+    return limited
 
 
 def main() -> None:
@@ -36,7 +58,14 @@ def main() -> None:
             """,
             (scan_date, scan_id, scan_id),
         )
-        for table in ["market_data", "report_sources", "extracted_values", "valuations", "scores", "memos"]:
+        for table in [
+            "market_data",
+            "report_sources",
+            "extracted_values",
+            "valuations",
+            "scores",
+            "memos",
+        ]:
             conn.execute(f"DELETE FROM {table} WHERE scan_date = ?", (scan_date,))
 
     notes: list[str] = []
@@ -45,7 +74,21 @@ def main() -> None:
     except Exception as exc:
         notes.append(f"Company discovery failed gracefully: {exc}")
 
-    watchlist = all_active_companies(DB_PATH) or seed_watchlist
+    watchlist = all_active_companies(DB_PATH)
+    if not watchlist:
+        watchlist = seed_watchlist
+    watchlist = _limit_companies(watchlist, seed_watchlist, notes)
+    with connect(DB_PATH) as conn:
+        for company in watchlist:
+            company_type = classify_company_type(company)
+            conn.execute(
+                """
+                UPDATE companies
+                SET company_type = ?, business_model = ?
+                WHERE ticker = ?
+                """,
+                (company_type, COMPANY_TYPE_DESCRIPTIONS.get(company_type, ""), company["ticker"]),
+            )
 
     try:
         run_market_scan(str(DB_PATH), scan_date, watchlist)
@@ -75,16 +118,33 @@ def main() -> None:
         notes.append(f"Valuation/scoring/memo stage failed gracefully: {exc}")
 
     with connect(DB_PATH) as conn:
-        score_count = conn.execute("SELECT COUNT(*) FROM scores WHERE scan_date = ?", (scan_date,)).fetchone()[0]
+        score_count = conn.execute(
+            "SELECT COUNT(*) FROM scores WHERE scan_date = ?",
+            (scan_date,),
+        ).fetchone()[0]
 
     if score_count == 0:
         notes.append("No scores were generated; preserving the previous successful portal.")
         with connect(DB_PATH) as conn:
-            conn.execute("UPDATE scan_runs SET completed_at = ?, status = 'failed', notes = ? WHERE scan_date = ?", (utc_now_iso(), "\n".join(notes), scan_date))
+            conn.execute(
+                """
+                UPDATE scan_runs
+                SET completed_at = ?, status = 'failed', notes = ?
+                WHERE scan_date = ?
+                """,
+                (utc_now_iso(), "\n".join(notes), scan_date),
+            )
         raise SystemExit("\n".join(notes))
 
     with connect(DB_PATH) as conn:
-        conn.execute("UPDATE scan_runs SET completed_at = ?, status = 'completed', notes = ? WHERE scan_date = ?", (utc_now_iso(), "\n".join(notes), scan_date))
+        conn.execute(
+            """
+            UPDATE scan_runs
+            SET completed_at = ?, status = 'completed', notes = ?
+            WHERE scan_date = ?
+            """,
+            (utc_now_iso(), "\n".join(notes), scan_date),
+        )
 
     print(f"Daily scan completed for {scan_date}")
     if notes:

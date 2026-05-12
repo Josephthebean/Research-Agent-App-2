@@ -100,8 +100,9 @@ def collect_news(database_path: str, scan_date: str, companies: list[dict[str, A
         return []
     per_company = _env_int("NEWS_ITEMS_PER_COMPANY", 5)
     delay = float(os.getenv("NEWS_REQUEST_DELAY_SECONDS", "1"))
+    company_limit = max(1, _env_int("NEWS_MAX_COMPANIES_PER_RUN", _env_int("PIPELINE_MAX_COMPANIES_PER_RUN", 35)))
     rows: list[dict[str, Any]] = []
-    for company in companies:
+    for company in companies[:company_limit]:
         rows.extend(_yfinance_news(company, per_company))
         if len([row for row in rows if row["ticker"] == company["ticker"]]) < per_company:
             time.sleep(delay)

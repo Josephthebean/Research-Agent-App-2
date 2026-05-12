@@ -12,11 +12,12 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   scan:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -58,9 +59,16 @@ jobs:
           ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
           YFINANCE_ENABLED: ${{ vars.YFINANCE_ENABLED || 'true' }}
           GOOGLE_FINANCE_EXPERIMENTAL: ${{ vars.GOOGLE_FINANCE_EXPERIMENTAL || 'false' }}
-          SOURCE_DISCOVER_PDF_LINKS: ${{ vars.SOURCE_DISCOVER_PDF_LINKS || 'true' }}
+          PIPELINE_MAX_COMPANIES_PER_RUN: ${{ vars.PIPELINE_MAX_COMPANIES_PER_RUN || '35' }}
+          SOURCE_DISCOVER_PDF_LINKS: ${{ vars.SOURCE_DISCOVER_PDF_LINKS || 'false' }}
           SOURCE_DOWNLOAD_PDFS: ${{ vars.SOURCE_DOWNLOAD_PDFS || 'false' }}
-          SOURCE_REQUEST_DELAY_SECONDS: ${{ vars.SOURCE_REQUEST_DELAY_SECONDS || '2' }}
+          SOURCE_REQUEST_DELAY_SECONDS: ${{ vars.SOURCE_REQUEST_DELAY_SECONDS || '0.5' }}
+          SOURCE_MAX_COMPANIES_PER_RUN: ${{ vars.SOURCE_MAX_COMPANIES_PER_RUN || '35' }}
+          SOURCE_MAX_SEED_URLS_PER_COMPANY: ${{ vars.SOURCE_MAX_SEED_URLS_PER_COMPANY || '4' }}
+          SOURCE_PDF_LINK_LIMIT_PER_SEED: ${{ vars.SOURCE_PDF_LINK_LIMIT_PER_SEED || '3' }}
+          SOURCE_EXTRACT_REMOTE_HTML: ${{ vars.SOURCE_EXTRACT_REMOTE_HTML || 'false' }}
+          EXTRACT_MAX_SOURCES_PER_RUN: ${{ vars.EXTRACT_MAX_SOURCES_PER_RUN || '60' }}
+          EXTRACT_MAX_PAGES_PER_DOC: ${{ vars.EXTRACT_MAX_PAGES_PER_DOC || '8' }}
           DISCOVERY_ENABLE_LIVE_SOURCES: ${{ vars.DISCOVERY_ENABLE_LIVE_SOURCES || 'true' }}
           DISCOVERY_ENRICH_COMPANY_PROFILES: ${{ vars.DISCOVERY_ENRICH_COMPANY_PROFILES || 'true' }}
           DISCOVERY_USE_CURATED_FALLBACK: ${{ vars.DISCOVERY_USE_CURATED_FALLBACK || 'true' }}
@@ -70,8 +78,9 @@ jobs:
           DISCOVERY_REMOTE_CSV_URLS: ${{ vars.DISCOVERY_REMOTE_CSV_URLS || '' }}
           DISCOVERY_EXTRA_COMPANIES_JSON: ${{ vars.DISCOVERY_EXTRA_COMPANIES_JSON || '' }}
           NEWS_DISCOVERY_ENABLED: ${{ vars.NEWS_DISCOVERY_ENABLED || 'true' }}
-          NEWS_ITEMS_PER_COMPANY: ${{ vars.NEWS_ITEMS_PER_COMPANY || '5' }}
-          NEWS_REQUEST_DELAY_SECONDS: ${{ vars.NEWS_REQUEST_DELAY_SECONDS || '1' }}
+          NEWS_ITEMS_PER_COMPANY: ${{ vars.NEWS_ITEMS_PER_COMPANY || '3' }}
+          NEWS_MAX_COMPANIES_PER_RUN: ${{ vars.NEWS_MAX_COMPANIES_PER_RUN || '35' }}
+          NEWS_REQUEST_DELAY_SECONDS: ${{ vars.NEWS_REQUEST_DELAY_SECONDS || '0.5' }}
         run: python scripts/run_daily_scan.py
 
       - name: Build static portal
