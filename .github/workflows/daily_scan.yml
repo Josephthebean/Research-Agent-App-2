@@ -41,7 +41,7 @@ jobs:
         with:
           path: |
             data/research.db
-            public/history
+            public
             reports/companies
           key: research-history-${{ github.run_id }}
           restore-keys: |
@@ -104,7 +104,7 @@ jobs:
           status=${PIPESTATUS[0]}
           echo "exit_code=${status}" >> "$GITHUB_OUTPUT"
           if [ "$status" -ne 0 ]; then
-            echo "::warning::Static portal generation failed with exit code ${status}. Publishing a diagnostic fallback page. See the research-outputs artifact for outputs/logs/build_site.log."
+            echo "::warning::Static portal generation failed with exit code ${status}. Publishing the restored portal if available, otherwise a diagnostic fallback page. See the research-outputs artifact for outputs/logs/build_site.log."
           fi
           if [ ! -f public/index.html ]; then
             cat > public/index.html <<'HTML'
