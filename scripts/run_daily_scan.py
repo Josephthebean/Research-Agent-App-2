@@ -134,7 +134,8 @@ def main() -> None:
                 """,
                 (utc_now_iso(), "\n".join(notes), scan_date),
             )
-        raise SystemExit("\n".join(notes))
+        print("\n".join(notes))
+        return
 
     with connect(DB_PATH) as conn:
         conn.execute(
