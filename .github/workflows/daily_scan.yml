@@ -48,6 +48,8 @@ jobs:
             research-history-
 
       - name: Run daily scan
+        id: daily_scan
+        shell: bash
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-4.1-mini' }}
@@ -81,10 +83,34 @@ jobs:
           NEWS_ITEMS_PER_COMPANY: ${{ vars.NEWS_ITEMS_PER_COMPANY || '3' }}
           NEWS_MAX_COMPANIES_PER_RUN: ${{ vars.NEWS_MAX_COMPANIES_PER_RUN || '35' }}
           NEWS_REQUEST_DELAY_SECONDS: ${{ vars.NEWS_REQUEST_DELAY_SECONDS || '0.5' }}
-        run: python scripts/run_daily_scan.py
+        run: |
+          set -o pipefail
+          mkdir -p outputs/logs public
+          python scripts/run_daily_scan.py 2>&1 | tee outputs/logs/run_daily_scan.log
+          status=${PIPESTATUS[0]}
+          echo "exit_code=${status}" >> "$GITHUB_OUTPUT"
+          if [ "$status" -ne 0 ]; then
+            echo "::warning::Daily scan failed with exit code ${status}. Continuing so the previous successful portal can remain available. See the research-outputs artifact for outputs/logs/run_daily_scan.log."
+          fi
+          exit 0
 
       - name: Build static portal
-        run: python scripts/build_site.py
+        id: build_site
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p outputs/logs public
+          python scripts/build_site.py 2>&1 | tee outputs/logs/build_site.log
+          status=${PIPESTATUS[0]}
+          echo "exit_code=${status}" >> "$GITHUB_OUTPUT"
+          if [ "$status" -ne 0 ]; then
+            echo "::warning::Static portal generation failed with exit code ${status}. Attempting to deploy the last committed or restored public site. See the research-outputs artifact for outputs/logs/build_site.log."
+          fi
+          if [ ! -f public/index.html ]; then
+            echo "::error::public/index.html is missing, so there is no portal to deploy."
+            exit 1
+          fi
+          exit 0
 
       - name: Upload research artifacts
         uses: actions/upload-artifact@v4
@@ -97,6 +123,7 @@ jobs:
             outputs/latest_screen.json
             outputs/historical_scores.csv
             outputs/historical_scores.json
+            outputs/logs/*.log
             public/data/metadata.json
             reports/*.md
             reports/companies/*.md
@@ -105,9 +132,11 @@ jobs:
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: public
 
